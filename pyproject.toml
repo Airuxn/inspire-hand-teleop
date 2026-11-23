@@ -1,11 +1,33 @@
 [project]
 name = "inspire-hand-teleop"
-version = "0.1.0"
+version = "0.2.0"
 description = "Real-time webcam teleoperation of the Inspire RH56 dexterous hand."
 readme = "README.md"
 license = { text = "MIT" }
 authors = [{ name = "Michaël VH" }]
 requires-python = ">=3.10"
+keywords = [
+    "robotics",
+    "teleoperation",
+    "dexterous-manipulation",
+    "hand-tracking",
+    "retargeting",
+    "mediapipe",
+    "inspire-hand",
+    "modbus",
+]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Science/Research",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: POSIX :: Linux",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+    "Topic :: System :: Hardware",
+]
 dependencies = [
     "numpy>=1.24",
     "opencv-python>=4.8",
@@ -14,6 +36,11 @@ dependencies = [
     "pyqtgraph>=0.13",
     "pyside6-essentials>=6.7",
 ]
+
+[project.urls]
+Repository = "https://github.com/Airuxn/inspire-hand-teleop"
+Issues = "https://github.com/Airuxn/inspire-hand-teleop/issues"
+Changelog = "https://github.com/Airuxn/inspire-hand-teleop/blob/main/CHANGELOG.md"
 
 [project.scripts]
 inspire-teleop = "inspire_teleop.cli:main"

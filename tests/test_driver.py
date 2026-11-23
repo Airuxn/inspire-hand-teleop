@@ -34,6 +34,15 @@ def test_set_angles_requires_six_values():
         hand.set_angles([0, 0, 0])
 
 
+def test_byte_registers_return_one_value_per_actuator():
+    hand, ser = make_hand()
+    for i in range(6):
+        ser.regs[Reg.TEMP + i] = 24 + i
+        ser.regs[Reg.STATUS + i] = 0x0200 | 2
+    assert hand.get_temperatures() == [24, 25, 26, 27, 28, 29]
+    assert hand.get_statuses() == [2] * 6
+
+
 def test_simulated_actuators_move_toward_target():
     hand, _ = make_hand()
     hand.set_speeds(1000)

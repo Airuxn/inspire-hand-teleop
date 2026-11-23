@@ -3,4 +3,4 @@
 from .driver import FINGERS, InspireHand, ModbusError
 
 __all__ = ["FINGERS", "InspireHand", "ModbusError"]
-__version__ = "0.1.0"
+__version__ = "0.2.0"

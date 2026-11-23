@@ -133,14 +133,6 @@ def _check_crc(frame: bytes) -> None:
         raise ModbusError(f"CRC mismatch in {frame.hex(' ')}")
 
 
-def _split_bytes(registers: Sequence[int]) -> list[int]:
-    out: list[int] = []
-    for value in registers:
-        out.append(value & 0xFF)
-        out.append((value >> 8) & 0xFF)
-    return out[:NUM_DOF]
-
-
 def _six(values: int | Sequence[int], name: str) -> list[int]:
     if isinstance(values, int):
         values = [values] * NUM_DOF
@@ -194,14 +186,19 @@ class InspireHand:
     def get_currents(self) -> list[int]:
         return self.bus.read_registers(Reg.CURRENT, NUM_DOF)
 
+    # The 1-byte-per-actuator areas (error, status, temperature) are served by the hand as one
+    # register per actuator with the value in the low byte (verified on an RH56 over Modbus).
+    def _byte_values(self, address: int) -> list[int]:
+        return [v & 0xFF for v in self.bus.read_registers(address, NUM_DOF)]
+
     def get_errors(self) -> list[int]:
-        return _split_bytes(self.bus.read_registers(Reg.ERROR, 3))
+        return self._byte_values(Reg.ERROR)
 
     def get_statuses(self) -> list[int]:
-        return _split_bytes(self.bus.read_registers(Reg.STATUS, 3))
+        return self._byte_values(Reg.STATUS)
 
     def get_temperatures(self) -> list[int]:
-        return _split_bytes(self.bus.read_registers(Reg.TEMP, 3))
+        return self._byte_values(Reg.TEMP)
 
     def hand_id(self) -> int:
         return self.bus.read_registers(Reg.HAND_ID, 1)[0]

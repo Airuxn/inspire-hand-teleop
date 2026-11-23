@@ -1,18 +1,106 @@
 # inspire-hand-teleop
 
+[![CI](https://github.com/Airuxn/inspire-hand-teleop/actions/workflows/ci.yml/badge.svg)](https://github.com/Airuxn/inspire-hand-teleop/actions/workflows/ci.yml)
+![Python](https://img.shields.io/badge/python-3.10%20|%203.12%20|%203.13-blue)
+[![License: MIT](https://img.shields.io/badge/license-MIT-green)](LICENSE)
+
 Real-time teleoperation of the **Inspire RH56** dexterous hand from an ordinary webcam:
 MediaPipe hand tracking, retargeting of 21 human hand landmarks onto the hand's 6 actuators,
-One Euro filtering, and a low-latency Modbus RTU driver.
+One Euro filtering, and a low-latency Modbus RTU driver. Includes a desktop app for
+connecting, testing, calibrating and teleoperating the hand.
 
-> **Status:** software complete and tested against a simulated hand (`--mock`).
-> First hardware session pending — measured latencies will be added below.
+![The app with a simulated hand](docs/images/app.png)
+<sub>The app in simulated-hand mode, fed with a MediaPipe sample image. Orange bars: target
+from the webcam. Green lines: angle measured on the hand.</sub>
+
+## Status
+
+Tested on a physical Inspire RH56 over a CH340 RS485 adapter: communication, finger tests and
+webcam teleoperation work. Modbus latency is measured (below); actuator dynamics and
+end-to-end latency are next. See the [changelog](CHANGELOG.md).
 
 ## Why
 
 Teleoperation is how most robot-learning datasets are collected: a human demonstrates, the
-robot mirrors, and the (observation, action) pairs become training data for imitation learning
-and vision-language-action models. This repo is the first stage of that pipeline for a
-dexterous humanoid hand — the same hand family used on the Unitree G1.
+robot mirrors, and the (observation, action) pairs become training data for imitation
+learning and vision-language-action models. This repo is the first stage of that pipeline for
+a dexterous humanoid hand — the same hand family used on the Unitree G1.
+
+## Features
+
+- **Webcam teleoperation** at up to 60 Hz command rate, with no gloves or markers.
+- **Geometric retargeting** from 3D hand landmarks to the hand's 6 actuators, with a
+  two-pose calibration per user.
+- **Low-latency driver**: about 5 ms per Modbus request instead of a fixed 200 ms wait.
+- **Desktop app** with live target-vs-measured bars and a history plot, plus a command-line
+  interface for scripting.
+- **Hardware tests**: per-finger motion test, step-response measurement, error and
+  temperature readout.
+- **Simulated hand** that runs the real driver over an emulated serial port, so everything
+  works without hardware and is covered by tests.
+- **CSV logging** of targets, measured angles and forces for analysis and system
+  identification.
+
+## Install
+
+Requires Linux, Python 3.10+ and [uv](https://docs.astral.sh/uv/).
+
+```bash
+git clone https://github.com/Airuxn/inspire-hand-teleop
+cd inspire-hand-teleop
+uv sync
+```
+
+Optional: install the app with a launcher in the application menu and on the desktop.
+
+```bash
+scripts/install_desktop.sh              # or --editable to run from this checkout
+```
+
+The MediaPipe hand model (~8 MB) is downloaded to `~/.cache/inspire-hand-teleop/` on first
+run. Serial access requires membership of the `dialout` group. Wiring, power and register
+details are in [docs/hardware.md](docs/hardware.md).
+
+## Usage
+
+### App
+
+```bash
+uv run inspire-teleop app
+```
+
+The sidebar walks through five steps:
+
+1. **Connect the hand.** The CH340 adapter is preselected; tick *Simulated hand* to try
+   everything without hardware.
+2. **Camera.** Starts automatically and shows which hand is tracked.
+3. **Test the hand.** Moves each finger in turn (slow, low force), measures the step response,
+   and clears error flags.
+4. **Calibrate.** Record an open hand and a fist. Actuators whose two poses look too similar
+   keep their previous calibration instead of amplifying tracking noise. Calibration is stored
+   in `~/.config/inspire-hand-teleop/calibration.json`.
+5. **Teleoperate.** Start/pause, open the hand, adjust speed, grip force and smoothing, and
+   optionally log to CSV.
+
+### Command line
+
+```bash
+inspire-teleop ports                      # list serial ports, mark the CH340 adapter
+inspire-teleop check                      # read-only: id, angles, forces, temperatures, errors
+inspire-teleop wiggle                     # move each actuator in turn (slow, low force)
+inspire-teleop step --finger index        # step response: dead time, rise time -> CSV
+inspire-teleop calibrate                  # record open hand + fist from the webcam
+inspire-teleop run                        # teleoperate in a minimal keyboard-driven window
+inspire-teleop run --mock                 # same, with a simulated hand
+inspire-teleop run --log run.csv --record demo.mp4
+```
+
+Keys in the `run` window: `space` pause/resume (the hand holds its pose), `o` open hand,
+`r` reset filter, `q`/`esc` quit (the hand opens on exit). If the tracked hand leaves the
+image, the robot hand holds its last pose.
+
+Per-actuator values always follow the hand's order:
+`little, ring, middle, index, thumb_bend, thumb_rotate`.
 
 ## How it works
 
@@ -22,7 +110,7 @@ flowchart LR
     mp -->|21 x 3D world landmarks| ret[Retargeting<br/>joint-angle features]
     ret --> cal[Per-user calibration<br/>open / fist -> 1000 / 0]
     cal --> f[One Euro filter]
-    f --> link[HandLink thread<br/>fixed-rate, deadband]
+    f --> link[HandLink thread<br/>fixed rate, deadband]
     link -->|Modbus RTU 115200 baud| hand[Inspire RH56]
     hand -->|measured angles, forces| link
 ```
@@ -35,99 +123,79 @@ flowchart LR
 | thumb bend | thumb MCP bend + IP bend |
 | thumb rotate | elevation of the thumb (CMC → IP) out of the palm plane |
 
-A two-pose calibration (open hand, fist) maps each feature linearly onto the hand's
-0 (closed) … 1000 (open) range, so different users and camera setups work without tuning.
+A two-pose calibration maps each feature linearly onto the hand's 0 (closed) … 1000 (open)
+range, so different users and camera setups work without tuning.
 
-**Driver.** The commonly used Python driver waits a fixed 200 ms after every command, which
-caps control at ~5 Hz. `inspire_teleop.driver` reads each response by its exact expected
-length and verifies the CRC, so a write/read round trip is bounded by the serial transfer and
-the hand's reply time. The control link runs on its own thread so vision never blocks on I/O
-and the hand always receives the newest target.
+**Driver.** Each response is read by its exact expected length and its CRC is verified, so a
+request takes as long as the serial transfer and the hand's reply, not a fixed delay. The
+hand link runs on its own thread at a fixed rate: vision never blocks on serial I/O, and the
+hand always receives the newest target.
 
-**Session.** `inspire_teleop.session.TeleopSession` owns the camera, tracker, filter and hand
-link on a worker thread; the Qt app and the command-line window are thin front ends over it.
-
-**Mock mode.** `--mock` runs the real Modbus driver against an in-process emulation of the
-hand's registers with rate-limited actuator dynamics, so the full pipeline can be developed and
-tested without hardware.
-
-## Install
-
-```bash
-git clone https://github.com/Airuxn/inspire-hand-teleop
-cd inspire-hand-teleop
-uv sync            # or: pip install -e .
-```
-
-The MediaPipe hand model (~8 MB) is downloaded to `~/.cache/inspire-hand-teleop/` on first run.
-
-Linux serial access: your user must be in the `dialout` group, and `brltty` must not be
-installed (it claims CH340 adapters on Ubuntu).
-
-## Usage
-
-### App
-
-```bash
-uv run inspire-teleop app
-scripts/install_desktop.sh      # optional: install + launcher in the app menu and on the desktop
-```
-
-Calibration is stored in `~/.config/inspire-hand-teleop/calibration.json`.
-
-One window with the camera view, per-actuator bars (webcam target vs. measured on the hand),
-a live history plot, and numbered steps in the sidebar:
-
-1. **Connect the hand** — the CH340 adapter is preselected; tick *Simulated hand* to try
-   everything without hardware.
-2. **Camera** — starts automatically; shows which hand is tracked and the frame rate.
-3. **Test the hand** — move each finger in turn (slow, low force), measure the step response,
-   clear error flags.
-4. **Calibrate** — record an open hand and a fist; actuators whose two poses look too similar
-   keep their previous calibration instead of amplifying tracking noise.
-5. **Teleoperate** — start/pause, open hand, speed, grip force and smoothing sliders, optional
-   CSV logging.
-
-### Command line
-
-```bash
-inspire-teleop ports                      # find the CH340 adapter
-inspire-teleop check                      # id, angles, forces, temperatures, error flags
-inspire-teleop wiggle                     # move each actuator in turn (slow, low force)
-inspire-teleop calibrate                  # record open hand + fist from the webcam
-inspire-teleop run                        # teleoperate in a minimal keyboard-driven window
-inspire-teleop run --mock                 # same, with a simulated hand
-inspire-teleop run --log run.csv --record demo.mp4
-inspire-teleop step --finger index        # step response: dead time, rise time
-```
-
-Keys in the `run` window: `space` pause/resume (hand holds its pose), `o` open hand,
-`r` reset filter, `q`/`esc` quit (the hand opens on exit).
-If the tracked hand leaves the image, the robot hand holds its last pose.
-
-All per-finger values follow the hand's actuator order:
-`little, ring, middle, index, thumb_bend, thumb_rotate`.
+**Session.** `TeleopSession` owns the camera, tracker, filter and hand link on a worker
+thread. The Qt app and the command-line window are thin front ends over it.
 
 ## Measurements
 
-To be filled in from the first hardware session (`inspire-teleop step`, `run --log`):
+Inspire RH56 over a CH340 RS485 adapter at 115200 baud, 200 requests each:
 
-| Metric | Value |
-|---|---|
-| Modbus write round trip | – |
-| Actuator dead time (step) | – |
-| Actuator 10–90 % rise time | – |
-| Camera frame → command sent | – |
+| Request | Median | p95 |
+|---|---|---|
+| Read 6 measured angles | 4.55 ms | 4.65 ms |
+| Write 6 target angles | 4.92 ms | 4.99 ms |
+
+Next: actuator dead time and rise time (`inspire-teleop step`) and camera-to-motion latency.
+Details and method in [docs/hardware.md](docs/hardware.md#measurements).
+
+## Project layout
+
+```
+inspire_teleop/
+  driver.py      Modbus RTU client and InspireHand API
+  sim_serial.py  emulated hand for --mock and tests
+  tracking.py    webcam capture and MediaPipe hand landmarks
+  retarget.py    landmarks -> actuator features, calibration
+  filters.py     One Euro filter
+  link.py        fixed-rate hand link thread with CSV logging
+  session.py     camera -> tracking -> retargeting -> hand pipeline
+  routines.py    finger test and step response
+  app.py         Qt desktop app
+  teleop.py      minimal OpenCV window for `run` and `calibrate`
+  cli.py         `inspire-teleop` command line
+tests/           driver, retargeting, filter and session tests (no hardware needed)
+docs/            hardware notes and images
+```
+
+## Development
+
+```bash
+uv sync
+uv run pytest
+uv run ruff check . && uv run ruff format --check .
+```
+
+CI runs the same checks on Python 3.10, 3.12 and 3.13.
 
 ## Roadmap
 
-1. **Teleoperation** (this repo) — webcam → hand in real time.
-2. **Digital twin + system identification** — fit a MuJoCo actuator model of the hand to the
-   step responses recorded with `inspire-teleop step`, and report the sim-vs-real error.
-3. **Policy learning** — record teleoperated grasp demonstrations with camera images and
-   train imitation-learning / VLA policies; train RL grasping in simulation and transfer it to
-   the physical hand.
+- [x] Webcam teleoperation with calibration and filtering
+- [x] Desktop app and hardware test routines
+- [x] Tested on a physical RH56; Modbus latency measured
+- [ ] Actuator step response and end-to-end latency measurements
+- [ ] Force sensor zero calibration and grasp detection
+- [ ] MuJoCo digital twin of the hand, with actuator parameters fitted to measured step
+      responses (system identification) and a sim-vs-real comparison
+- [ ] Record teleoperated demonstrations (camera + actions) and train imitation-learning /
+      VLA grasp policies
+- [ ] RL grasping in simulation, transferred to the physical hand
+
+## Acknowledgements
+
+- [MediaPipe Hand Landmarker](https://ai.google.dev/edge/mediapipe/solutions/vision/hand_landmarker)
+  for hand tracking; the screenshot uses one of its sample images.
+- Register addresses as documented in
+  [Sentdex/inspire_hands](https://github.com/Sentdex/inspire_hands).
+- G. Casiez, N. Roussel, D. Vogel, *1€ Filter*, CHI 2012.
 
 ## License
 
-MIT
+[MIT](LICENSE)

@@ -45,7 +45,7 @@ class HandLink(threading.Thread):
         self._target: np.ndarray | None = None
         self._target_capture_t = 0.0
         self._sent: np.ndarray | None = None
-        self._stop = threading.Event()
+        self._stop_requested = threading.Event()
         self._log_file = None
         self._log = None
 
@@ -66,14 +66,14 @@ class HandLink(threading.Thread):
                 self._log.writerow(LOG_HEADER)
 
     def stop(self) -> None:
-        self._stop.set()
+        self._stop_requested.set()
         self.join(timeout=1.0)
         self.log_to(None)
 
     def run(self) -> None:
         cycle = 0
         next_t = time.monotonic()
-        while not self._stop.is_set():
+        while not self._stop_requested.is_set():
             with self._lock:
                 target, capture_t = self._target, self._target_capture_t
             try:

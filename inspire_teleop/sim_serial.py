@@ -13,6 +13,13 @@ from .driver import NUM_DOF, READ_HOLDING, WRITE_MULTIPLE, WRITE_SINGLE, Reg, cr
 
 FULL_STROKE_SECONDS = 0.8  # time for a full 0..1000 stroke at speed 1000
 SIMULATED_TRANSFER_S = 0.002
+# ERROR, STATUS and TEMP hold one byte per actuator at consecutive addresses; the real hand
+# serves each as its own register, so reads in this area step by 1 address instead of 2.
+BYTE_AREA = range(Reg.ERROR, Reg.TEMP + NUM_DOF)
+
+
+def _address(base: int, k: int) -> int:
+    return base + k if base in BYTE_AREA else base + 2 * k
 
 
 class FakeInspireSerial:
@@ -49,7 +56,7 @@ class FakeInspireSerial:
         func = data[1]
         if func == READ_HOLDING:
             address, count = struct.unpack(">HH", data[2:6])
-            values = [self.regs.get(address + 2 * k, 0) for k in range(count)]
+            values = [self.regs.get(_address(address, k), 0) for k in range(count)]
             body = struct.pack(">BBB", self.slave_id, func, 2 * count)
             body += struct.pack(f">{count}H", *values)
         elif func == WRITE_SINGLE:
@@ -60,7 +67,7 @@ class FakeInspireSerial:
             address, count = struct.unpack(">HH", data[2:6])
             values = struct.unpack(f">{count}H", data[7 : 7 + 2 * count])
             for k, value in enumerate(values):
-                self.regs[address + 2 * k] = value
+                self.regs[_address(address, k)] = value
             body = data[:6]
         else:
             body = bytes([self.slave_id, func | 0x80, 0x01])
