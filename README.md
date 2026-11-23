@@ -1,6 +1,7 @@
 # inspire-hand-teleop
 
 [![CI](https://github.com/Airuxn/inspire-hand-teleop/actions/workflows/ci.yml/badge.svg)](https://github.com/Airuxn/inspire-hand-teleop/actions/workflows/ci.yml)
+[![codecov](https://codecov.io/gh/Airuxn/inspire-hand-teleop/graph/badge.svg)](https://codecov.io/gh/Airuxn/inspire-hand-teleop)
 ![Python](https://img.shields.io/badge/python-3.10%20|%203.12%20|%203.13-blue)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 
@@ -188,7 +189,8 @@ The tests need no hand and no webcam:
 - **CLI and routines**: `check`, `wiggle`, `step`, `run`, error messages and exit codes.
 
 CI runs lint and type checks, then the tests with coverage on Python 3.10, 3.12 and 3.13;
-the coverage table is shown in each run's summary.
+the coverage table is shown in each run's summary and uploaded to
+[Codecov](https://codecov.io/gh/Airuxn/inspire-hand-teleop).
 
 ## Roadmap
 
