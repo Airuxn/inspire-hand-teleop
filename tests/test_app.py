@@ -55,10 +55,12 @@ def test_full_user_flow(qapp, window, tmp_path, monkeypatch):
     assert pump(qapp, lambda: win.teleop_btn.isEnabled())
     assert "Connected to hand id 1 (simulated)" in log_text(win)
 
+    assert pump(qapp, lambda: win.test_btn.isEnabled())
     win.test_btn.click()
     assert pump(qapp, lambda: "Routine finished." in log_text(win))
     assert log_text(win).count("commanded  400 -> measured  400") == 6
 
+    assert pump(qapp, lambda: win.step_btn.isEnabled())
     win.step_btn.click()
     assert pump(qapp, lambda: log_text(win).count("Routine finished.") == 2)
     assert "step 1000 ->  200" in log_text(win)
