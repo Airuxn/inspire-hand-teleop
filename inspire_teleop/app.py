@@ -340,7 +340,9 @@ class MainWindow(QMainWindow):
         scroll = QScrollArea()
         scroll.setWidget(panel)
         scroll.setWidgetResizable(True)
-        scroll.setFixedWidth(380)
+        scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        scrollbar_w = scroll.verticalScrollBar().sizeHint().width()
+        scroll.setFixedWidth(max(400, panel.sizeHint().width() + scrollbar_w + 8))
         scroll.setFrameShape(QFrame.Shape.NoFrame)
         return scroll
 
@@ -590,7 +592,7 @@ class MainWindow(QMainWindow):
             self.teleop_btn.setText("▶  Start teleoperation")
             style += "background:#2e7d46;"
         else:
-            self.teleop_btn.setText("▶  Start teleoperation (connect hand + camera first)")
+            self.teleop_btn.setText("Connect hand and camera first")
         self.teleop_btn.setStyleSheet(style)
 
         def fmt(v: float) -> str:
