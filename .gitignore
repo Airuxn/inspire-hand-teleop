@@ -11,6 +11,7 @@ calibration.json
 *.task
 *.csv
 *.mp4
+!docs/images/demo.mp4
 !docs/**/*.csv
 .coverage
 .coverage.*
