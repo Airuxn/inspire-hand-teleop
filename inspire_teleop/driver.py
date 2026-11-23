@@ -223,6 +223,19 @@ def describe_errors(code: int) -> str:
     return ", ".join(name for bit, name in ERROR_BITS.items() if code & bit) or f"0x{code:02X}"
 
 
+NO_REPLY_HINT = (
+    "No reply from the hand. Check: hand power supply on, RS485 A/B wires not swapped, "
+    "adapter connected to the hand, baudrate (default 115200) and slave id (default 1)."
+)
+
+
+def list_serial_ports():
+    """Serial ports that correspond to real devices (skips placeholder ttyS* entries)."""
+    from serial.tools import list_ports
+
+    return [p for p in list_ports.comports() if p.description != "n/a"]
+
+
 def find_ch340_ports() -> list[str]:
     from serial.tools import list_ports
 

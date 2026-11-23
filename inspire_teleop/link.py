@@ -11,6 +11,13 @@ import numpy as np
 
 from .driver import FINGERS, NUM_DOF, InspireHand, ModbusError
 
+LOG_HEADER = (
+    ["t", "capture_t", "write_ms"]
+    + [f"target_{f}" for f in FINGERS]
+    + [f"actual_{f}" for f in FINGERS]
+    + [f"force_{f}" for f in FINGERS]
+)
+
 
 class HandLink(threading.Thread):
     def __init__(
@@ -19,7 +26,6 @@ class HandLink(threading.Thread):
         rate_hz: float = 60.0,
         deadband: int = 4,
         read_every: int = 3,
-        log_path: Path | None = None,
     ):
         super().__init__(daemon=True)
         self.hand = hand
@@ -40,26 +46,29 @@ class HandLink(threading.Thread):
         self._target_capture_t = 0.0
         self._sent: np.ndarray | None = None
         self._stop = threading.Event()
-        self._log_file = open(log_path, "w", newline="") if log_path else None  # noqa: SIM115
-        self._log = csv.writer(self._log_file) if self._log_file else None
-        if self._log:
-            self._log.writerow(
-                ["t", "capture_t", "write_ms"]
-                + [f"target_{f}" for f in FINGERS]
-                + [f"actual_{f}" for f in FINGERS]
-                + [f"force_{f}" for f in FINGERS]
-            )
+        self._log_file = None
+        self._log = None
 
     def submit(self, target: np.ndarray, capture_t: float) -> None:
         with self._lock:
             self._target = np.asarray(target, dtype=float).copy()
             self._target_capture_t = capture_t
 
+    def log_to(self, path: Path | None) -> None:
+        """Start logging to `path` (CSV), or stop logging when `path` is None."""
+        with self._lock:
+            if self._log_file:
+                self._log_file.close()
+            self._log_file = self._log = None
+            if path is not None:
+                self._log_file = open(path, "w", newline="")  # noqa: SIM115
+                self._log = csv.writer(self._log_file)
+                self._log.writerow(LOG_HEADER)
+
     def stop(self) -> None:
         self._stop.set()
         self.join(timeout=1.0)
-        if self._log_file:
-            self._log_file.close()
+        self.log_to(None)
 
     def run(self) -> None:
         cycle = 0
@@ -80,14 +89,8 @@ class HandLink(threading.Thread):
                 if cycle % self.read_every == 0:
                     self.actual = np.array(self.hand.get_angles(), dtype=float)
                     self.forces = np.array(self.hand.get_forces(), dtype=float)
-                if self._log and (sent_now or cycle % self.read_every == 0):
-                    tgt = self._sent if self._sent is not None else np.full(NUM_DOF, np.nan)
-                    self._log.writerow(
-                        [f"{time.monotonic():.4f}", f"{capture_t:.4f}", f"{self.write_ms:.2f}"]
-                        + [f"{v:.0f}" for v in tgt]
-                        + [f"{v:.0f}" for v in self.actual]
-                        + [f"{v:.0f}" for v in self.forces]
-                    )
+                if sent_now or cycle % self.read_every == 0:
+                    self._write_log(capture_t)
             except ModbusError as exc:
                 self.errors += 1
                 self.last_error = str(exc)
@@ -98,6 +101,18 @@ class HandLink(threading.Thread):
                 time.sleep(delay)
             else:
                 next_t = time.monotonic()
+
+    def _write_log(self, capture_t: float) -> None:
+        with self._lock:
+            if self._log is None:
+                return
+            tgt = self._sent if self._sent is not None else np.full(NUM_DOF, np.nan)
+            self._log.writerow(
+                [f"{time.monotonic():.4f}", f"{capture_t:.4f}", f"{self.write_ms:.2f}"]
+                + [f"{v:.0f}" for v in tgt]
+                + [f"{v:.0f}" for v in self.actual]
+                + [f"{v:.0f}" for v in self.forces]
+            )
 
     def _should_send(self, target: np.ndarray) -> bool:
         if self._sent is None:

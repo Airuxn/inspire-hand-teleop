@@ -95,7 +95,9 @@ class Calibration:
         return ANGLE_MAX * (1.0 - closure)
 
     def save(self, path: str | Path) -> None:
-        Path(path).write_text(json.dumps(asdict(self), indent=2) + "\n")
+        path = Path(path)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps(asdict(self), indent=2) + "\n")
 
     @classmethod
     def load(cls, path: str | Path) -> Calibration:

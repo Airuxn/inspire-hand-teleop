@@ -44,6 +44,9 @@ length and verifies the CRC, so a write/read round trip is bounded by the serial
 the hand's reply time. The control link runs on its own thread so vision never blocks on I/O
 and the hand always receives the newest target.
 
+**Session.** `inspire_teleop.session.TeleopSession` owns the camera, tracker, filter and hand
+link on a worker thread; the Qt app and the command-line window are thin front ends over it.
+
 **Mock mode.** `--mock` runs the real Modbus driver against an in-process emulation of the
 hand's registers with rate-limited actuator dynamics, so the full pipeline can be developed and
 tested without hardware.
@@ -63,18 +66,42 @@ installed (it claims CH340 adapters on Ubuntu).
 
 ## Usage
 
+### App
+
+```bash
+uv run inspire-teleop app
+scripts/install_desktop.sh      # optional: install + launcher in the app menu and on the desktop
+```
+
+Calibration is stored in `~/.config/inspire-hand-teleop/calibration.json`.
+
+One window with the camera view, per-actuator bars (webcam target vs. measured on the hand),
+a live history plot, and numbered steps in the sidebar:
+
+1. **Connect the hand** — the CH340 adapter is preselected; tick *Simulated hand* to try
+   everything without hardware.
+2. **Camera** — starts automatically; shows which hand is tracked and the frame rate.
+3. **Test the hand** — move each finger in turn (slow, low force), measure the step response,
+   clear error flags.
+4. **Calibrate** — record an open hand and a fist; actuators whose two poses look too similar
+   keep their previous calibration instead of amplifying tracking noise.
+5. **Teleoperate** — start/pause, open hand, speed, grip force and smoothing sliders, optional
+   CSV logging.
+
+### Command line
+
 ```bash
 inspire-teleop ports                      # find the CH340 adapter
 inspire-teleop check                      # id, angles, forces, temperatures, error flags
 inspire-teleop wiggle                     # move each actuator in turn (slow, low force)
 inspire-teleop calibrate                  # record open hand + fist from the webcam
-inspire-teleop run                        # teleoperate
+inspire-teleop run                        # teleoperate in a minimal keyboard-driven window
 inspire-teleop run --mock                 # same, with a simulated hand
 inspire-teleop run --log run.csv --record demo.mp4
 inspire-teleop step --finger index        # step response: dead time, rise time
 ```
 
-Keys in the teleop window: `space` pause/resume (hand holds its pose), `o` open hand,
+Keys in the `run` window: `space` pause/resume (hand holds its pose), `o` open hand,
 `r` reset filter, `q`/`esc` quit (the hand opens on exit).
 If the tracked hand leaves the image, the robot hand holds its last pose.
 

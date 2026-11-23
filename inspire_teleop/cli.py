@@ -5,57 +5,64 @@ from __future__ import annotations
 import argparse
 import csv
 import sys
-import time
 from pathlib import Path
 
 from .driver import (
     FINGERS,
-    NUM_DOF,
+    NO_REPLY_HINT,
     STATUS_NAMES,
     InspireHand,
     ModbusError,
     ModbusRTU,
     describe_errors,
     find_ch340_ports,
+    list_serial_ports,
 )
+from .routines import finger_test, step_response
 
-DEFAULT_CALIBRATION = Path("calibration.json")
+DEFAULT_CALIBRATION = Path.home() / ".config" / "inspire-hand-teleop" / "calibration.json"
 
 
-def _open_hand(args: argparse.Namespace) -> InspireHand:
+def _resolve_port(args: argparse.Namespace) -> str | None:
+    if args.mock or args.port:
+        return args.port
+    ports = find_ch340_ports()
+    if not ports:
+        sys.exit("No CH340 USB-serial adapter found. Plug in the hand or pass --port.")
+    return ports[0]
+
+
+def _open_hand(args: argparse.Namespace, set_limits: bool = True) -> InspireHand:
     if args.mock:
         from .sim_serial import FakeInspireSerial
 
         print("Using simulated hand (--mock)")
-        return InspireHand(ModbusRTU(FakeInspireSerial(args.slave_id, latency=True), args.slave_id))
-    port = args.port
-    if port is None:
-        ports = find_ch340_ports()
-        if not ports:
-            sys.exit("No CH340 USB-serial adapter found. Plug in the hand or pass --port.")
-        port = ports[0]
-    print(f"Connecting to {port} @ {args.baudrate} baud, slave id {args.slave_id}")
-    try:
-        return InspireHand.open(port, args.baudrate, args.slave_id)
-    except Exception as exc:  # serial.SerialException has no common base worth importing
-        sys.exit(f"Cannot open {port}: {exc}")
+        hand = InspireHand(ModbusRTU(FakeInspireSerial(args.slave_id, latency=True), args.slave_id))
+    else:
+        port = _resolve_port(args)
+        print(f"Connecting to {port} @ {args.baudrate} baud, slave id {args.slave_id}")
+        try:
+            hand = InspireHand.open(port, args.baudrate, args.slave_id)
+        except Exception as exc:  # serial.SerialException has no common base worth importing
+            sys.exit(f"Cannot open {port}: {exc}")
+    if set_limits:
+        hand.set_speeds(args.speed)
+        hand.set_forces(args.force)
+    return hand
 
 
 def cmd_ports(args: argparse.Namespace) -> None:
-    from serial.tools import list_ports
-
     ch340 = set(find_ch340_ports())
-    found = False
-    for p in list_ports.comports():
-        found = True
+    ports = list_serial_ports()
+    for p in ports:
         mark = "  <-- CH340 (Inspire hand adapter)" if p.device in ch340 else ""
         print(f"{p.device:16s} {p.description}{mark}")
-    if not found:
+    if not ports:
         print("No serial ports found.")
 
 
 def cmd_check(args: argparse.Namespace) -> None:
-    with _open_hand(args) as hand:
+    with _open_hand(args, set_limits=False) as hand:
         if args.clear_errors:
             hand.clear_errors()
             print("Errors cleared.")
@@ -81,114 +88,65 @@ def cmd_check(args: argparse.Namespace) -> None:
 
 def cmd_wiggle(args: argparse.Namespace) -> None:
     with _open_hand(args) as hand:
-        hand.set_speeds(args.speed)
-        hand.set_forces(args.force)
-        hand.open_all()
-        _wait_settled(hand)
-        for i, finger in enumerate(FINGERS):
-            angles = [1000] * NUM_DOF
-            angles[i] = args.depth
-            hand.set_angles(angles)
-            elapsed = _wait_settled(hand)
-            print(
-                f"{finger:13s} commanded {args.depth:4d} -> measured {hand.get_angles()[i]:4d} "
-                f"(settled after {elapsed:.2f} s)"
-            )
-            hand.open_all()
-            _wait_settled(hand)
+        finger_test(hand, args.depth)
         print("Done. Each finger should have closed partly and reopened, in the order above.")
-
-
-def _wait_settled(hand: InspireHand, timeout: float = 4.0, still_for: float = 0.25) -> float:
-    """Poll until no actuator moves for `still_for` seconds; returns the elapsed time."""
-    t0 = time.monotonic()
-    last, still_since = hand.get_angles(), time.monotonic()
-    while (now := time.monotonic()) - t0 < timeout:
-        time.sleep(0.02)
-        angles = hand.get_angles()
-        if max(abs(a - b) for a, b in zip(angles, last, strict=True)) > 2:
-            last, still_since = angles, now
-        elif now - still_since >= still_for:
-            break
-    return time.monotonic() - t0
 
 
 def cmd_step(args: argparse.Namespace) -> None:
     """Step response of one actuator: latency and rise time for system identification."""
-    i = FINGERS.index(args.finger)
-    rows: list[tuple[float, int, int]] = []
     with _open_hand(args) as hand:
-        hand.set_speeds(args.speed)
-        hand.set_forces(args.force)
-        hand.open_all()
-        time.sleep(1.5)
-        for target in (args.low, 1000):
-            angles = [1000] * NUM_DOF
-            angles[i] = target
-            start = hand.get_angles()[i]
-            seg: list[tuple[float, int, int]] = []
-            t0 = time.monotonic()
-            hand.set_angles(angles)
-            while (t := time.monotonic() - t0) < args.duration:
-                seg.append((t, target, hand.get_angles()[i]))
-            _report_step(seg, target, start)
-            rows += seg
+        results = step_response(hand, args.finger, args.low, args.duration)
     out = Path(args.output)
     with out.open("w", newline="") as f:
         w = csv.writer(f)
         w.writerow(["t_since_command", "target", "angle"])
-        w.writerows((f"{t:.4f}", tgt, a) for t, tgt, a in rows)
-    print(f"Wrote {len(rows)} samples to {out}")
+        for r in results:
+            print(r.summary())
+            w.writerows((f"{t:.4f}", r.target, a) for t, a in r.samples)
+    print(f"Wrote {sum(len(r.samples) for r in results)} samples to {out}")
 
 
-def _report_step(seg: list[tuple[float, int, int]], target: int, start: int) -> None:
-    if len(seg) < 2:
-        print("not enough samples")
-        return
-    span = target - start
-    poll_hz = len(seg) / seg[-1][0]
+def _session(args: argparse.Namespace):
+    from .filters import OneEuroFilter
+    from .session import TeleopSession
 
-    def first_time(fraction: float) -> float | None:
-        for t, _, a in seg:
-            if span and (a - start) / span >= fraction:
-                return t
-        return None
-
-    dead, t10, t90 = first_time(0.02), first_time(0.1), first_time(0.9)
-    fmt = lambda v: f"{v * 1000:6.1f} ms" if v is not None else "   n/a"  # noqa: E731
-    print(
-        f"step {start:4d} -> {target:4d}: dead time {fmt(dead)}, 10-90% rise "
-        f"{fmt(t90 - t10) if t10 is not None and t90 is not None else '   n/a'}, "
-        f"final {seg[-1][2]:4d}, polling {poll_hz:.0f} Hz"
-    )
+    session = TeleopSession(Path(args.calibration), args.which)
+    if hasattr(args, "min_cutoff"):
+        session.filter = OneEuroFilter(min_cutoff=args.min_cutoff, beta=args.beta)
+    return session
 
 
 def cmd_calibrate(args: argparse.Namespace) -> None:
     from .teleop import run_calibration
 
-    run_calibration(Path(args.output), args.camera, args.which)
+    session = _session(args)
+    try:
+        run_calibration(session, args.camera)
+    finally:
+        session.close()
 
 
 def cmd_run(args: argparse.Namespace) -> None:
     from .teleop import run_teleop
 
-    hand = _open_hand(args)
+    session = _session(args)
     try:
-        run_teleop(
-            hand,
-            camera_index=args.camera,
-            calibration_path=Path(args.calibration),
-            rate_hz=args.rate,
-            which_hand=args.which,
-            speed=args.speed,
-            force=args.force,
-            log_path=Path(args.log) if args.log else None,
-            record_path=Path(args.record) if args.record else None,
-            min_cutoff=args.min_cutoff,
-            beta=args.beta,
-        )
+        session.speed, session.force = args.speed, args.force
+        session.set_logging(Path(args.log) if args.log else None)
+        port = _resolve_port(args)
+        hand_id = session.connect(port, args.mock, args.slave_id, args.baudrate, args.rate)
+        print(f"Connected to hand id {hand_id} ({'simulated' if args.mock else port})")
+        run_teleop(session, args.camera, Path(args.record) if args.record else None)
     finally:
-        hand.close()
+        session.close()
+
+
+def cmd_app(args: argparse.Namespace) -> None:
+    try:
+        from .app import run_app
+    except ImportError as exc:
+        sys.exit(f"The app needs PySide6 and pyqtgraph ({exc}). Install with: uv sync")
+    run_app(Path(args.calibration), args.camera)
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -202,6 +160,16 @@ def build_parser() -> argparse.ArgumentParser:
         p.add_argument("--mock", action="store_true", help="use a simulated hand")
         p.add_argument("--speed", type=int, default=1000, help="actuator speed 0-1000")
         p.add_argument("--force", type=int, default=500, help="force threshold 0-1000")
+
+    def vision_args(p: argparse.ArgumentParser) -> None:
+        p.add_argument("--camera", type=int, default=0)
+        p.add_argument("--which", choices=["any", "left", "right"], default="any")
+        p.add_argument("--calibration", default=str(DEFAULT_CALIBRATION))
+
+    p = sub.add_parser("app", help="graphical app (recommended)")
+    p.add_argument("--camera", type=int, default=0)
+    p.add_argument("--calibration", default=str(DEFAULT_CALIBRATION))
+    p.set_defaults(func=cmd_app)
 
     p = sub.add_parser("ports", help="list serial ports")
     p.set_defaults(func=cmd_ports)
@@ -225,16 +193,12 @@ def build_parser() -> argparse.ArgumentParser:
     p.set_defaults(func=cmd_step)
 
     p = sub.add_parser("calibrate", help="record open-hand and fist poses from the webcam")
-    p.add_argument("--camera", type=int, default=0)
-    p.add_argument("--which", choices=["any", "left", "right"], default="any")
-    p.add_argument("--output", default=str(DEFAULT_CALIBRATION))
+    vision_args(p)
     p.set_defaults(func=cmd_calibrate)
 
-    p = sub.add_parser("run", help="webcam teleoperation")
+    p = sub.add_parser("run", help="webcam teleoperation in a minimal keyboard-driven window")
     hand_args(p)
-    p.add_argument("--camera", type=int, default=0)
-    p.add_argument("--which", choices=["any", "left", "right"], default="any")
-    p.add_argument("--calibration", default=str(DEFAULT_CALIBRATION))
+    vision_args(p)
     p.add_argument("--rate", type=float, default=60.0, help="command rate to the hand in Hz")
     p.add_argument("--log", help="CSV log of targets, measured angles and forces")
     p.add_argument("--record", help="save the annotated camera view to an .mp4")
@@ -249,7 +213,10 @@ def main(argv: list[str] | None = None) -> None:
     try:
         args.func(args)
     except ModbusError as exc:
-        sys.exit(f"Hand communication failed: {exc}")
+        hint = f"\n{NO_REPLY_HINT}" if "got 0" in str(exc) else ""
+        sys.exit(f"Hand communication failed: {exc}{hint}")
+    except (RuntimeError, TimeoutError) as exc:
+        sys.exit(f"Error: {exc}")
     except KeyboardInterrupt:
         print("Interrupted.")
 

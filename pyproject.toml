@@ -11,6 +11,8 @@ dependencies = [
     "opencv-python>=4.8",
     "mediapipe>=0.10.14",
     "pyserial>=3.5",
+    "pyqtgraph>=0.13",
+    "pyside6-essentials>=6.7",
 ]
 
 [project.scripts]
