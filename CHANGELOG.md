@@ -12,7 +12,9 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Headless smoke test of the Qt app that clicks through the whole workflow.
 - Tests for the hardware routines, all CLI commands, the camera thread and the `run` and
   `calibrate` windows.
-- Coverage in CI (minimum 85%, report in the run summary) and Pyright type checking.
+- Coverage in CI (minimum 85%, report in the run summary and on Codecov) and Pyright type
+  checking.
+- Demo video of teleoperation on the physical hand in the README.
 
 ### Changed
 

@@ -10,6 +10,15 @@ MediaPipe hand tracking, retargeting of 21 human hand landmarks onto the hand's 
 One Euro filtering, and a low-latency Modbus RTU driver. Includes a desktop app for
 connecting, testing, calibrating and teleoperating the hand.
 
+<p align="center">
+  <a href="docs/images/demo.mp4">
+    <img src="docs/images/demo.webp" width="300" alt="The Inspire hand following a human hand in real time">
+  </a>
+  <br>
+  <sub>First test on the physical RH56: the hand on the desk follows the fingers shown to the
+  webcam. Phone recording, 25 s; click for the video.</sub>
+</p>
+
 ![The app with a simulated hand](docs/images/app.png)
 <sub>The app in simulated-hand mode, fed with a MediaPipe sample image. Orange bars: target
 from the webcam. Green lines: angle measured on the hand.</sub>
