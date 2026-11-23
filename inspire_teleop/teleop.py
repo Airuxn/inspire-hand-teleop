@@ -49,11 +49,11 @@ def compose(frame: np.ndarray, lines: list[str], snap: Snapshot) -> np.ndarray:
     return np.hstack([frame, panel])
 
 
-def _wait_frame(session: TeleopSession, last: Snapshot | None) -> Snapshot:
+def _wait_frame(session: TeleopSession, last: Snapshot | None) -> tuple[Snapshot, np.ndarray]:
     while True:
         snap = session.snapshot()
         if snap.frame is not None and (last is None or snap.frame is not last.frame):
-            return snap
+            return snap, snap.frame
         time.sleep(0.003)
 
 
@@ -69,7 +69,7 @@ def run_teleop(
     print("Keys: [space] pause/resume  [o] open hand  [r] reset filter  [q/esc] quit")
     try:
         while True:
-            snap = _wait_frame(session, snap)
+            snap, frame = _wait_frame(session, snap)
             lines = [
                 "RUNNING" if snap.teleop_on else "PAUSED (hand holds pose)",
                 "tracking" if snap.hand_detected else "no hand (holding last pose)",
@@ -79,11 +79,11 @@ def run_teleop(
                 f"bus errors {snap.bus_errors}",
                 "calibrated" if snap.calibrated else "NOT calibrated (run calibrate)",
             ]
-            view = compose(snap.frame, lines, snap)
+            view = compose(frame, lines, snap)
             if record_path is not None:
                 if writer is None:
                     h, w = view.shape[:2]
-                    fourcc = cv2.VideoWriter_fourcc(*"mp4v")
+                    fourcc = cv2.VideoWriter.fourcc(*"mp4v")
                     writer = cv2.VideoWriter(str(record_path), fourcc, 30, (w, h))
                 writer.write(view)
             cv2.imshow(WINDOW, view)
@@ -112,8 +112,8 @@ def run_calibration(session: TeleopSession, camera_index: int = 0) -> None:
         for pose, instruction in CALIBRATION_POSES.items():
             started = False
             while pose not in session.recorded_poses():
-                snap = _wait_frame(session, snap)
-                frame = snap.frame.copy()
+                snap, frame = _wait_frame(session, snap)
+                frame = frame.copy()
                 if snap.calibrating:
                     status = f"recording {snap.calib_progress}/{CALIBRATION_SAMPLES}"
                 else:

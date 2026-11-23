@@ -12,3 +12,5 @@ calibration.json
 *.csv
 *.mp4
 !docs/**/*.csv
+.coverage
+.coverage.*

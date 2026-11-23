@@ -26,7 +26,7 @@ class OneEuroFilter:
 
     def __call__(self, x: np.ndarray, t: float) -> np.ndarray:
         x = np.asarray(x, dtype=float)
-        if self._x is None or self._t is None or t <= self._t:
+        if self._x is None or self._dx is None or self._t is None or t <= self._t:
             self._x, self._dx, self._t = x, np.zeros_like(x), t
             return x
         dt = t - self._t

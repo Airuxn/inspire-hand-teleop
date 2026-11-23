@@ -103,7 +103,7 @@ class Camera:
             self.cap = cv2.VideoCapture(index)
         if not self.cap.isOpened():
             raise RuntimeError(f"cannot open camera {index}")
-        self.cap.set(cv2.CAP_PROP_FOURCC, cv2.VideoWriter_fourcc(*"MJPG"))
+        self.cap.set(cv2.CAP_PROP_FOURCC, cv2.VideoWriter.fourcc(*"MJPG"))
         self.cap.set(cv2.CAP_PROP_FRAME_WIDTH, width)
         self.cap.set(cv2.CAP_PROP_FRAME_HEIGHT, height)
         self.cap.set(cv2.CAP_PROP_FPS, fps)
@@ -133,6 +133,7 @@ class Camera:
         with self._cond:
             if not self._cond.wait_for(lambda: self._seq > last_seq, timeout):
                 raise TimeoutError("no camera frame received")
+            assert self._frame is not None
             return self._frame, self._t, self._seq
 
     def close(self) -> None:

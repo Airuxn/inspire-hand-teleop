@@ -3,6 +3,22 @@
 All notable changes to this project are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [Unreleased]
+
+### Added
+
+- End-to-end vision tests on MediaPipe sample photos (fist, victory, pointing, thumbs-up):
+  image to actuator angles.
+- Headless smoke test of the Qt app that clicks through the whole workflow.
+- Tests for the hardware routines, all CLI commands, the camera thread and the `run` and
+  `calibrate` windows.
+- Coverage in CI (minimum 85%, report in the run summary) and Pyright type checking.
+
+### Changed
+
+- The emulated hand takes an injectable clock, so motion tests no longer depend on sleeps.
+- Driver setters accept any sized collection of numbers (including NumPy arrays).
+
 ## [0.2.0] - 2026-11-23
 
 First version tested on a physical Inspire RH56 hand.

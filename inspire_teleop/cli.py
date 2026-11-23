@@ -23,8 +23,8 @@ from .routines import finger_test, step_response
 DEFAULT_CALIBRATION = Path.home() / ".config" / "inspire-hand-teleop" / "calibration.json"
 
 
-def _resolve_port(args: argparse.Namespace) -> str | None:
-    if args.mock or args.port:
+def _resolve_port(args: argparse.Namespace) -> str:
+    if args.port:
         return args.port
     ports = find_ch340_ports()
     if not ports:
@@ -133,7 +133,7 @@ def cmd_run(args: argparse.Namespace) -> None:
     try:
         session.speed, session.force = args.speed, args.force
         session.set_logging(Path(args.log) if args.log else None)
-        port = _resolve_port(args)
+        port = None if args.mock else _resolve_port(args)
         hand_id = session.connect(port, args.mock, args.slave_id, args.baudrate, args.rate)
         print(f"Connected to hand id {hand_id} ({'simulated' if args.mock else port})")
         run_teleop(session, args.camera, Path(args.record) if args.record else None)

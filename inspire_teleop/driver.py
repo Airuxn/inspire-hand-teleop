@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import struct
 import threading
-from collections.abc import Sequence
+from collections.abc import Collection, Sequence
 from typing import Protocol
 
 FINGERS = ("little", "ring", "middle", "index", "thumb_bend", "thumb_rotate")
@@ -66,8 +66,8 @@ class ModbusError(RuntimeError):
 
 
 class SerialLike(Protocol):
-    def write(self, data: bytes) -> int | None: ...
-    def read(self, size: int) -> bytes: ...
+    def write(self, data: bytes, /) -> int | None: ...
+    def read(self, size: int, /) -> bytes: ...
     def reset_input_buffer(self) -> None: ...
     def close(self) -> None: ...
 
@@ -133,7 +133,7 @@ def _check_crc(frame: bytes) -> None:
         raise ModbusError(f"CRC mismatch in {frame.hex(' ')}")
 
 
-def _six(values: int | Sequence[int], name: str) -> list[int]:
+def _six(values: int | Collection[float], name: str) -> list[int]:
     if isinstance(values, int):
         values = [values] * NUM_DOF
     if len(values) != NUM_DOF:
@@ -165,13 +165,13 @@ class InspireHand:
     def __exit__(self, *exc) -> None:
         self.close()
 
-    def set_angles(self, angles: Sequence[int]) -> None:
+    def set_angles(self, angles: Collection[float]) -> None:
         self.bus.write_registers(Reg.ANGLE_SET, _six(angles, "angles"))
 
-    def set_speeds(self, speeds: int | Sequence[int]) -> None:
+    def set_speeds(self, speeds: int | Collection[float]) -> None:
         self.bus.write_registers(Reg.SPEED_SET, _six(speeds, "speeds"))
 
-    def set_forces(self, forces: int | Sequence[int]) -> None:
+    def set_forces(self, forces: int | Collection[float]) -> None:
         self.bus.write_registers(Reg.FORCE_SET, _six(forces, "forces"))
 
     def get_angles(self) -> list[int]:

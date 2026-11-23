@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import struct
 import time
+from typing import Protocol
 
 from .driver import NUM_DOF, READ_HOLDING, WRITE_MULTIPLE, WRITE_SINGLE, Reg, crc16
 
@@ -18,14 +19,33 @@ SIMULATED_TRANSFER_S = 0.002
 BYTE_AREA = range(Reg.ERROR, Reg.TEMP + NUM_DOF)
 
 
+class Clock(Protocol):
+    def monotonic(self) -> float: ...
+    def sleep(self, seconds: float, /) -> None: ...
+
+
+class FakeClock:
+    """Manual clock: `sleep` advances time instantly, for fast deterministic tests."""
+
+    def __init__(self, start: float = 1000.0):
+        self.now = start
+
+    def monotonic(self) -> float:
+        return self.now
+
+    def sleep(self, seconds: float) -> None:
+        self.now += max(seconds, 0.0)
+
+
 def _address(base: int, k: int) -> int:
     return base + k if base in BYTE_AREA else base + 2 * k
 
 
 class FakeInspireSerial:
-    def __init__(self, slave_id: int = 1, latency: bool = False):
+    def __init__(self, slave_id: int = 1, latency: bool = False, clock: Clock | None = None):
         self.slave_id = slave_id
         self.latency = latency
+        self.clock: Clock = clock or time
         self.is_open = True
         self.regs: dict[int, int] = {Reg.HAND_ID: slave_id}
         for i in range(NUM_DOF):
@@ -34,11 +54,11 @@ class FakeInspireSerial:
             self.regs[Reg.SPEED_SET + 2 * i] = 1000
             self.regs[Reg.FORCE_SET + 2 * i] = 1000
         self._actual = [1000.0] * NUM_DOF
-        self._last_step = time.monotonic()
+        self._last_step = self.clock.monotonic()
         self._out = bytearray()
 
     def _step(self) -> None:
-        now = time.monotonic()
+        now = self.clock.monotonic()
         dt = now - self._last_step
         self._last_step = now
         for i in range(NUM_DOF):
@@ -73,7 +93,7 @@ class FakeInspireSerial:
             body = bytes([self.slave_id, func | 0x80, 0x01])
         self._out += body + crc16(body)
         if self.latency:
-            time.sleep(SIMULATED_TRANSFER_S)
+            self.clock.sleep(SIMULATED_TRANSFER_S)
         return len(data)
 
     def read(self, size: int) -> bytes:

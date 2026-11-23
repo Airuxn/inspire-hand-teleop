@@ -46,7 +46,12 @@ Changelog = "https://github.com/Airuxn/inspire-hand-teleop/blob/main/CHANGELOG.m
 inspire-teleop = "inspire_teleop.cli:main"
 
 [dependency-groups]
-dev = ["pytest>=8", "ruff>=0.6"]
+dev = [
+    "pyright>=1.1.414",
+    "pytest>=8",
+    "pytest-cov>=7.1.0",
+    "ruff>=0.6",
+]
 
 [build-system]
 requires = ["hatchling"]
@@ -64,3 +69,16 @@ select = ["E", "F", "W", "I", "B", "UP"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+
+[tool.coverage.run]
+source = ["inspire_teleop"]
+concurrency = ["thread"]
+
+[tool.coverage.report]
+fail_under = 85
+show_missing = true
+skip_covered = true
+
+[tool.pyright]
+include = ["inspire_teleop", "tests"]
+pythonVersion = "3.10"

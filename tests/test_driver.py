@@ -1,9 +1,7 @@
-import time
-
 import pytest
 
 from inspire_teleop.driver import InspireHand, ModbusError, ModbusRTU, Reg, crc16
-from inspire_teleop.sim_serial import FakeInspireSerial
+from inspire_teleop.sim_serial import FakeClock, FakeInspireSerial
 
 
 def make_hand() -> tuple[InspireHand, FakeInspireSerial]:
@@ -44,12 +42,15 @@ def test_byte_registers_return_one_value_per_actuator():
 
 
 def test_simulated_actuators_move_toward_target():
-    hand, _ = make_hand()
+    clock = FakeClock()
+    hand = InspireHand(ModbusRTU(FakeInspireSerial(clock=clock)))
     hand.set_speeds(1000)
     hand.set_angles([0] * 6)
-    time.sleep(0.2)
-    angles = hand.get_angles()
-    assert all(0 < a < 1000 for a in angles)
+    clock.sleep(0.4)  # half of the 0.8 s full stroke
+    assert hand.get_angles() == [500] * 6
+    hand.set_speeds(500)
+    clock.sleep(0.4)
+    assert hand.get_angles() == [250] * 6
 
 
 def test_timeout_raises_modbus_error():

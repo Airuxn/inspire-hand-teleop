@@ -161,7 +161,7 @@ inspire_teleop/
   app.py         Qt desktop app
   teleop.py      minimal OpenCV window for `run` and `calibrate`
   cli.py         `inspire-teleop` command line
-tests/           driver, retargeting, filter and session tests (no hardware needed)
+tests/           unit, vision and headless app tests (no hardware or webcam needed)
 docs/            hardware notes and images
 ```
 
@@ -169,11 +169,26 @@ docs/            hardware notes and images
 
 ```bash
 uv sync
-uv run pytest
-uv run ruff check . && uv run ruff format --check .
+uv run pytest --cov                                   # tests + coverage (fails below 85%)
+uv run ruff check . && uv run ruff format --check .   # lint and formatting
+uv run pyright                                        # static type check
 ```
 
-CI runs the same checks on Python 3.10, 3.12 and 3.13.
+The tests need no hand and no webcam:
+
+- **Driver and protocol**: Modbus framing, CRC, exception replies, timeouts and register
+  layout, against an emulated hand (`sim_serial.py`) with a simulated clock, so motion tests
+  are exact and do not depend on machine speed.
+- **Vision, end to end**: real hand photos (fist, victory, pointing, thumbs-up) go through
+  MediaPipe, retargeting and calibration; the test checks which actuators open and close.
+- **Pipeline**: a still image stands in for the webcam and drives the emulated hand through
+  the full session, including the `run` and `calibrate` windows and video recording.
+- **App**: the Qt window runs headless (`QT_QPA_PLATFORM=offscreen`) and the test clicks
+  through connect, finger test, step response, calibration, logging and teleoperation.
+- **CLI and routines**: `check`, `wiggle`, `step`, `run`, error messages and exit codes.
+
+CI runs lint and type checks, then the tests with coverage on Python 3.10, 3.12 and 3.13;
+the coverage table is shown in each run's summary.
 
 ## Roadmap
 

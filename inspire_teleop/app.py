@@ -652,14 +652,16 @@ def _report_unhandled(exc_type, exc, tb) -> None:
     CRASH_LOG.parent.mkdir(parents=True, exist_ok=True)
     with CRASH_LOG.open("a") as f:
         f.write(f"--- {time.strftime('%Y-%m-%d %H:%M:%S')}\n{text}\n")
-    sys.__stderr__.write(text)
+    if sys.__stderr__ is not None:
+        sys.__stderr__.write(text)
     QMessageBox.critical(None, "Inspire Hand Teleop", f"{exc}\n\nDetails in {CRASH_LOG}")
 
 
 def run_app(calibration_path: Path, camera_index: int = 0) -> None:
     QApplication.setApplicationName("inspire-hand-teleop")
     QApplication.setDesktopFileName("inspire-hand-teleop")
-    app = QApplication.instance() or QApplication(sys.argv)
+    existing = QApplication.instance()
+    app = existing if isinstance(existing, QApplication) else QApplication(sys.argv)
     app.setWindowIcon(QIcon(str(ICON_PATH)))
     sys.excepthook = _report_unhandled
     _dark_palette(app)
