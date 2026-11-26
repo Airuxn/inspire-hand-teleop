@@ -225,3 +225,5 @@ the coverage table is shown in each run's summary and uploaded to
 ## License
 
 [MIT](LICENSE)
+
+⭐ If this project helped you, please give it a star!
